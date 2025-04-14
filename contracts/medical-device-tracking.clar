@@ -256,3 +256,73 @@
     )
   )
 )
+
+;; Verify device certification
+(define-read-only (verify-certification (device-id uint) (cert-type uint))
+  (let
+    (
+      (certification (unwrap! 
+        (map-get? device-certifications {device-id: device-id, cert-type: cert-type})
+        ERR_INVALID_CERTIFICATION
+      ))
+    )
+    (ok (get valid certification))
+  )
+)
+
+;; Revoke certification
+(define-public (revoke-certification (device-id uint) (cert-type uint))
+  (begin
+    (asserts! (is-valid-device-id device-id) ERR_INVALID_DEVICE)
+    (asserts! (is-valid-certification-type cert-type) ERR_INVALID_CERTIFICATION)
+
+    (let
+      (
+        (certification (unwrap! 
+          (map-get? device-certifications {device-id: device-id, cert-type: cert-type})
+          ERR_INVALID_CERTIFICATION
+        ))
+        (validated-device-id device-id)
+        (validated-cert-type cert-type)
+      )
+      (asserts! 
+        (or
+          (is-contract-owner tx-sender)
+          (is-eq (get issuer certification) tx-sender)
+        )
+        ERR_UNAUTHORIZED
+      )
+
+      (map-set device-certifications
+        {device-id: validated-device-id, cert-type: validated-cert-type}
+        (merge certification {valid: false})
+      )
+      (ok true)
+    )
+  )
+)
+
+;; Get device history
+(define-read-only (get-device-history (device-id uint))
+  (let 
+    (
+      (device (unwrap! (map-get? device-details {device-id: device-id}) ERR_INVALID_DEVICE))
+    )
+    (ok (get history device))
+  )
+)
+
+;; Get current device status
+(define-read-only (get-device-status (device-id uint))
+  (let 
+    (
+      (device (unwrap! (map-get? device-details {device-id: device-id}) ERR_INVALID_DEVICE))
+    )
+    (ok (get current-status device))
+  )
+)
+
+;; Get certification details
+(define-read-only (get-certification-details (device-id uint) (cert-type uint))
+  (ok (map-get? device-certifications {device-id: device-id, cert-type: cert-type}))
+)
