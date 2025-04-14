@@ -176,3 +176,83 @@
     (ok true)
   )
 )
+
+;; Update device status
+(define-public (update-device-status (device-id uint) (new-status uint))
+  (let 
+    (
+      (device (unwrap! (map-get? device-details {device-id: device-id}) ERR_INVALID_DEVICE))
+    )
+    (asserts! (is-valid-device-id device-id) ERR_INVALID_DEVICE)
+    (asserts! (is-valid-status new-status) ERR_INVALID_STATUS)
+    (asserts! 
+      (or 
+        (is-contract-owner tx-sender)
+        (is-eq (get owner device) tx-sender)
+      ) 
+      ERR_UNAUTHORIZED
+    )
+
+    (map-set device-details 
+      {device-id: device-id}
+      (merge device 
+        {
+          current-status: new-status,
+          history: (unwrap-panic 
+            (as-max-len? 
+              (append (get history device) {status: new-status, timestamp: (get-current-timestamp)}) 
+              u10
+            )
+          )
+        }
+      )
+    )
+    (ok true)
+  )
+)
+
+;; Add regulatory body with additional validation
+(define-public (add-regulatory-body (authority principal) (cert-type uint))
+  (begin
+    (asserts! (is-contract-owner tx-sender) ERR_UNAUTHORIZED)
+    (asserts! (is-valid-certification-type cert-type) ERR_INVALID_CERTIFICATION)
+    (asserts! (is-valid-authority authority) ERR_UNAUTHORIZED)
+
+    ;; After validation, we can safely use the authority
+    (map-set regulatory-bodies
+      {authority: authority, cert-type: cert-type}
+      {approved: true}
+    )
+    (ok true)
+  )
+)
+
+;; Add certification to device
+(define-public (add-certification (device-id uint) (cert-type uint))
+  (begin
+    (asserts! (is-valid-device-id device-id) ERR_INVALID_DEVICE)
+    (asserts! (is-valid-certification-type cert-type) ERR_INVALID_CERTIFICATION)
+    (asserts! (is-regulatory-body tx-sender cert-type) ERR_UNAUTHORIZED)
+
+    (asserts! 
+      (is-none 
+        (map-get? device-certifications {device-id: device-id, cert-type: cert-type})
+      )
+      ERR_CERTIFICATION_EXISTS
+    )
+
+    (let
+      ((validated-device-id device-id)
+       (validated-cert-type cert-type))
+      (map-set device-certifications
+        {device-id: validated-device-id, cert-type: validated-cert-type}
+        {
+          issuer: tx-sender,
+          timestamp: (get-current-timestamp),
+          valid: true
+        }
+      )
+      (ok true)
+    )
+  )
+)
